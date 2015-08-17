@@ -6,6 +6,10 @@ import (
 	"strconv"
 )
 
+const (
+	PutNullValError = "PutNullValError"
+)
+
 type Options struct {
 }
 
@@ -134,24 +138,20 @@ func (h *Handle) Get(key string) (string, error) {
 	return rec.val, nil
 }
 
-func (h *Handle) Put(key string, val string) error {
-	rec, err := newRecordFromKV(key, val)
-	if err != nil {
-		return err
+func (h *Handle) Put(key, val string) error {
+	if len(val) == 0 {
+		return errors.New(PutNullValError)
 	}
 
-	valpos, err := h.activefile.appendRecord(rec)
-	if err != nil {
-		return err
-	}
-
-	msg := &metamsg{h.activefile.id, rec.valsz, valpos, rec.tstamp}
-	h.keydir.put(key, msg)
-
-	return nil
+	return h.put(key, val)
 }
 
-func (Handle *Handle) Delete(Key []byte) error {
+func (h *Handle) Delete(key string) error {
+	err := h.put(key, "")
+	if err != nil {
+		delete(h.keydir, key)
+	}
+
 	return nil
 }
 
@@ -162,3 +162,24 @@ func (h *Handle) Keys() []string {
 /* ========================================================================== */
 /*                       Private auxiliary API below                          */
 /* ========================================================================== */
+func (h *Handle) put(key, val string) error {
+	rec, err := newRecordFromKV(key, val)
+	if err != nil {
+		return err
+	}
+
+	valpos, err := h.activefile.appendRecord(rec)
+	if err != nil {
+		return err
+	}
+
+	msg := &metamsg {
+		id: h.activefile.id,
+		valsz: rec.valsz,
+		valpost: valpos,
+		tstamp: rec.tstamp
+	}
+	h.keydir.put(key, msg)
+
+	return nil
+}
