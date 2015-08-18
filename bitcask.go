@@ -1,9 +1,15 @@
 package bitcask
 
 import (
+	"errors"
 	"io/ioutil"
 	"path/filepath"
 	"strconv"
+)
+
+const (
+	PutNullKeyError = "PutNullKeyError"
+	PutNullValError = "PutNullValError"
 )
 
 type Options struct {
@@ -134,24 +140,24 @@ func (h *Handle) Get(key string) (string, error) {
 	return rec.val, nil
 }
 
-func (h *Handle) Put(key string, val string) error {
-	rec, err := newRecordFromKV(key, val)
-	if err != nil {
-		return err
+func (h *Handle) Put(key, val string) error {
+	if len(key) == 0 {
+		return errors.New(PutNullKeyError)
 	}
 
-	valpos, err := h.activefile.appendRecord(rec)
-	if err != nil {
-		return err
+	if len(val) == 0 {
+		return errors.New(PutNullValError)
 	}
 
-	msg := &metamsg{h.activefile.id, rec.valsz, valpos, rec.tstamp}
-	h.keydir.put(key, msg)
-
-	return nil
+	return h.doPut(key, val)
 }
 
-func (Handle *Handle) Delete(Key []byte) error {
+func (h *Handle) Delete(key string) error {
+	err := h.doPut(key, "")
+	if err != nil {
+		delete(h.keydir.msgs, key)
+	}
+
 	return nil
 }
 
@@ -162,3 +168,24 @@ func (h *Handle) Keys() []string {
 /* ========================================================================== */
 /*                       Private auxiliary API below                          */
 /* ========================================================================== */
+func (h *Handle) doPut(key, val string) error {
+	rec, err := newRecordFromKV(key, val)
+	if err != nil {
+		return err
+	}
+
+	valpos, err := h.activefile.appendRecord(rec)
+	if err != nil {
+		return err
+	}
+
+	msg := &metamsg{
+		id:     h.activefile.id,
+		valsz:  rec.valsz,
+		valpos: valpos,
+		tstamp: rec.tstamp,
+	}
+	h.keydir.put(key, msg)
+
+	return nil
+}
