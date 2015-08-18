@@ -1,12 +1,14 @@
 package bitcask
 
 import (
+	"errors"
 	"io/ioutil"
 	"path/filepath"
 	"strconv"
 )
 
 const (
+	PutNullKeyError = "PutNullKeyError"
 	PutNullValError = "PutNullValError"
 )
 
@@ -139,17 +141,21 @@ func (h *Handle) Get(key string) (string, error) {
 }
 
 func (h *Handle) Put(key, val string) error {
+	if len(key) == 0 {
+		return errors.New(PutNullKeyError)
+	}
+
 	if len(val) == 0 {
 		return errors.New(PutNullValError)
 	}
 
-	return h.put(key, val)
+	return h.doPut(key, val)
 }
 
 func (h *Handle) Delete(key string) error {
-	err := h.put(key, "")
+	err := h.doPut(key, "")
 	if err != nil {
-		delete(h.keydir, key)
+		delete(h.keydir.msgs, key)
 	}
 
 	return nil
@@ -162,7 +168,7 @@ func (h *Handle) Keys() []string {
 /* ========================================================================== */
 /*                       Private auxiliary API below                          */
 /* ========================================================================== */
-func (h *Handle) put(key, val string) error {
+func (h *Handle) doPut(key, val string) error {
 	rec, err := newRecordFromKV(key, val)
 	if err != nil {
 		return err
@@ -173,11 +179,11 @@ func (h *Handle) put(key, val string) error {
 		return err
 	}
 
-	msg := &metamsg {
-		id: h.activefile.id,
-		valsz: rec.valsz,
-		valpost: valpos,
-		tstamp: rec.tstamp
+	msg := &metamsg{
+		id:     h.activefile.id,
+		valsz:  rec.valsz,
+		valpos: valpos,
+		tstamp: rec.tstamp,
 	}
 	h.keydir.put(key, msg)
 
